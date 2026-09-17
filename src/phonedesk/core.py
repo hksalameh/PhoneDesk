@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+import ctypes
 import os
 import shutil
 import subprocess
-import sys
+import time
 from typing import Iterable
 
 
@@ -93,14 +93,17 @@ class AndroidBridge:
 
 
 class ScrcpyManager:
+    DESKTOP_TITLE = "PhoneDesk - Desktop"
+
     def __init__(self, scrcpy_path: str | None = None):
         self.scrcpy = scrcpy_path or find_tool("scrcpy") or "scrcpy"
         self.processes: list[subprocess.Popen] = []
+        self.desktop_process: subprocess.Popen | None = None
 
     def version(self) -> CommandResult:
         return run_command([self.scrcpy, "--version"], timeout=8)
 
-    def _spawn(self, args: list[str]) -> CommandResult:
+    def _spawn(self, args: list[str], role: str | None = None) -> CommandResult:
         cmd = [self.scrcpy, *args]
         try:
             proc = subprocess.Popen(
@@ -117,6 +120,8 @@ class ScrcpyManager:
 
         self.processes = [p for p in self.processes if p.poll() is None]
         self.processes.append(proc)
+        if role == "desktop":
+            self.desktop_process = proc
         return CommandResult(True, "تم تشغيل scrcpy.")
 
     def mirror_phone(self, serial: str, turn_screen_off: bool = False) -> CommandResult:
@@ -138,9 +143,15 @@ class ScrcpyManager:
             "--keep-active",
             "--display-ime-policy=local",
             "--audio-source=output",
-            "--window-title=PhoneDesk - Desktop",
+            "--mouse=sdk",
+            "--keyboard=sdk",
+            "--mouse-bind=bhsn:++++",
+            "--max-fps=60",
+            "--disable-screensaver",
+            "--fullscreen",
+            f"--window-title={self.DESKTOP_TITLE}",
         ]
-        return self._spawn(args)
+        return self._spawn(args, role="desktop")
 
     def launch_app(self, serial: str, package: str) -> CommandResult:
         package = package.strip()
@@ -157,6 +168,67 @@ class ScrcpyManager:
         ]
         return self._spawn(args)
 
+    def _desktop_hwnd_windows(self) -> int | None:
+        proc = self.desktop_process
+        if not proc or proc.poll() is not None:
+            return None
+
+        user32 = ctypes.windll.user32
+        found: list[int] = []
+        enum_proc_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+        def callback(hwnd, _lparam):
+            pid = ctypes.c_ulong()
+            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+            if pid.value == proc.pid and user32.IsWindowVisible(hwnd):
+                if user32.GetWindowTextLengthW(hwnd) > 0:
+                    found.append(int(hwnd))
+                    return False
+            return True
+
+        callback_ref = enum_proc_type(callback)
+        user32.EnumWindows(callback_ref, 0)
+        return found[0] if found else None
+
+    def send_desktop_shortcut(self, action: str) -> CommandResult:
+        if os.name != "nt":
+            return CommandResult(False, "أزرار سطح المكتب العائمة مدعومة على Windows حاليًا.")
+
+        hwnd = self._desktop_hwnd_windows()
+        if not hwnd:
+            return CommandResult(False, "نافذة PhoneDesk Desktop غير موجودة.")
+
+        keymap = {
+            "home": 0x48,
+            "back": 0x42,
+            "recent": 0x53,
+            "notifications": 0x4E,
+            "volume_up": 0x26,
+            "volume_down": 0x28,
+        }
+        user32 = ctypes.windll.user32
+        user32.ShowWindow(hwnd, 9)
+        user32.SetForegroundWindow(hwnd)
+        time.sleep(0.06)
+
+        key_up = 0x0002
+        if action == "fullscreen":
+            vk = 0x7A  # F11
+            user32.keybd_event(vk, 0, 0, 0)
+            user32.keybd_event(vk, 0, key_up, 0)
+            return CommandResult(True, "تم تبديل وضع ملء الشاشة.")
+
+        vk = keymap.get(action)
+        if vk is None:
+            return CommandResult(False, f"أمر غير معروف: {action}")
+
+        vk_lalt = 0xA4
+        user32.keybd_event(vk_lalt, 0, 0, 0)
+        user32.keybd_event(vk, 0, 0, 0)
+        user32.keybd_event(vk, 0, key_up, 0)
+        user32.keybd_event(vk_lalt, 0, key_up, 0)
+        return CommandResult(True, "تم إرسال أمر التحكم إلى سطح المكتب.")
+
     def stop_all(self) -> int:
         stopped = 0
         for proc in self.processes:
@@ -164,4 +236,5 @@ class ScrcpyManager:
                 proc.terminate()
                 stopped += 1
         self.processes.clear()
+        self.desktop_process = None
         return stopped
