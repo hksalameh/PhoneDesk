@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from .core import AndroidBridge, CommandResult, ScrcpyManager, find_tool
+from .desktop_dock import DesktopDock
 
 
 class WorkerSignals(QObject):
@@ -50,6 +51,7 @@ class MainWindow(QMainWindow):
         self.bridge = AndroidBridge()
         self.scrcpy = ScrcpyManager()
         self.pool = QThreadPool.globalInstance()
+        self.desktop_dock = DesktopDock(self.scrcpy, self.append_log)
 
         self.address = QLineEdit(self.settings.value("serial", "192.168.1.2:5555"))
         self.status = QLabel("● غير متصل")
@@ -84,7 +86,7 @@ class MainWindow(QMainWindow):
 
         title = QLabel("PhoneDesk")
         title.setStyleSheet("font-size: 28px; font-weight: 800;")
-        subtitle = QLabel("تحويل اتصال ADB + scrcpy إلى تجربة سطح مكتب للهاتف")
+        subtitle = QLabel("تجربة سطح مكتب للهاتف مبنية على ADB + scrcpy")
         subtitle.setStyleSheet("color: #777;")
 
         layout.addWidget(title)
@@ -161,8 +163,14 @@ class MainWindow(QMainWindow):
         self.append_log(f"ADB: {adb or 'غير موجود'}")
         self.append_log(f"scrcpy: {scrcpy or 'غير موجود'}")
         available = bool(adb and scrcpy)
-        for button in (self.connect_btn, self.refresh_btn, self.mirror_btn, self.desktop_btn,
-                       self.load_apps_btn, self.launch_app_btn):
+        for button in (
+            self.connect_btn,
+            self.refresh_btn,
+            self.mirror_btn,
+            self.desktop_btn,
+            self.load_apps_btn,
+            self.launch_app_btn,
+        ):
             button.setEnabled(available)
         if available:
             self.refresh_state()
@@ -206,7 +214,8 @@ class MainWindow(QMainWindow):
         result = self.scrcpy.desktop(self._serial())
         self.append_log(result.output)
         if result.ok:
-            self.append_log("إذا ظهر العرض فارغًا، شغّل تطبيقًا من القسم التالي.")
+            self.desktop_dock.show_dock()
+            self.append_log("ظهر شريط التحكم العائم لسطح المكتب.")
 
     def load_apps(self):
         self.append_log("جلب تطبيقات المستخدم ...")
@@ -227,9 +236,12 @@ class MainWindow(QMainWindow):
         self.append_log(result.output)
 
     def stop_sessions(self):
+        self.desktop_dock.hide()
         count = self.scrcpy.stop_all()
         self.append_log(f"تم إيقاف {count} جلسة.")
 
     def closeEvent(self, event):
         self._save_settings()
+        self.desktop_dock.hide()
+        self.scrcpy.stop_all()
         super().closeEvent(event)
