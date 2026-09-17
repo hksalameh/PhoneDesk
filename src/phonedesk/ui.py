@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
 )
 
 from .core import AndroidBridge, CommandResult, ScrcpyManager, find_tool
-from .desktop_dock import DesktopDock
 
 
 class WorkerSignals(QObject):
@@ -51,7 +50,6 @@ class MainWindow(QMainWindow):
         self.bridge = AndroidBridge()
         self.scrcpy = ScrcpyManager()
         self.pool = QThreadPool.globalInstance()
-        self.desktop_dock = DesktopDock(self.scrcpy, self.append_log)
 
         self.address = QLineEdit(self.settings.value("serial", "192.168.1.2:5555"))
         self.status = QLabel("● غير متصل")
@@ -60,7 +58,7 @@ class MainWindow(QMainWindow):
         self.connect_btn = QPushButton("اتصال")
         self.refresh_btn = QPushButton("فحص الحالة")
         self.mirror_btn = QPushButton("عرض الهاتف")
-        self.desktop_btn = QPushButton("سطح مكتب")
+        self.desktop_btn = QPushButton("تشغيل Samsung DeX")
         self.stop_btn = QPushButton("إيقاف الجلسات")
 
         self.screen_off = QCheckBox("إطفاء شاشة الهاتف أثناء العرض")
@@ -70,8 +68,8 @@ class MainWindow(QMainWindow):
         self.package_combo.setEditable(True)
         self.package_combo.setInsertPolicy(QComboBox.NoInsert)
         self.package_combo.setPlaceholderText("مثال: com.android.chrome")
-        self.load_apps_btn = QPushButton("جلب التطبيقات")
-        self.launch_app_btn = QPushButton("تشغيل في نافذة")
+        self.load_apps_btn = QPushButton("جلب كل التطبيقات")
+        self.launch_app_btn = QPushButton("فتح في نافذة مستقلة")
 
         self.log = QTextEdit()
         self.log.setReadOnly(True)
@@ -86,7 +84,7 @@ class MainWindow(QMainWindow):
 
         title = QLabel("PhoneDesk")
         title.setStyleSheet("font-size: 28px; font-weight: 800;")
-        subtitle = QLabel("تجربة سطح مكتب للهاتف مبنية على ADB + scrcpy")
+        subtitle = QLabel("تشغيل واجهة Samsung للشاشة الثانوية عبر ADB + scrcpy")
         subtitle.setStyleSheet("color: #777;")
 
         layout.addWidget(title)
@@ -110,7 +108,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(actions)
         layout.addWidget(self.screen_off)
 
-        apps = QGroupBox("تشغيل تطبيق Android في نافذة مستقلة")
+        apps = QGroupBox("قائمة احتياطية للتطبيقات القابلة للتشغيل")
         apps_layout = QGridLayout(apps)
         apps_layout.addWidget(self.package_combo, 0, 0, 1, 2)
         apps_layout.addWidget(self.load_apps_btn, 1, 0)
@@ -214,12 +212,11 @@ class MainWindow(QMainWindow):
         result = self.scrcpy.desktop(self._serial())
         self.append_log(result.output)
         if result.ok:
-            self.desktop_dock.show_dock()
-            self.append_log("ظهر شريط التحكم العائم لسطح المكتب.")
+            self.append_log("تم تشغيل الشاشة الثانوية؛ Samsung SecondaryLauncher وDexTaskbar يعملان تلقائيًا على الأجهزة المدعومة.")
 
     def load_apps(self):
-        self.append_log("جلب تطبيقات المستخدم ...")
-        self._run_async(self.bridge.list_user_packages, self._after_apps, self._serial())
+        self.append_log("جلب كل التطبيقات القابلة للتشغيل ...")
+        self._run_async(self.bridge.list_launchable_packages, self._after_apps, self._serial())
 
     def _after_apps(self, result: CommandResult):
         if not result.ok:
@@ -228,7 +225,7 @@ class MainWindow(QMainWindow):
         packages = [x for x in result.output.splitlines() if x.strip()]
         self.package_combo.clear()
         self.package_combo.addItems(packages)
-        self.append_log(f"تم العثور على {len(packages)} حزمة مستخدم.")
+        self.append_log(f"تم العثور على {len(packages)} تطبيقًا قابلًا للتشغيل.")
 
     def launch_app(self):
         package = self.package_combo.currentText().strip()
@@ -236,12 +233,10 @@ class MainWindow(QMainWindow):
         self.append_log(result.output)
 
     def stop_sessions(self):
-        self.desktop_dock.hide()
         count = self.scrcpy.stop_all()
         self.append_log(f"تم إيقاف {count} جلسة.")
 
     def closeEvent(self, event):
         self._save_settings()
-        self.desktop_dock.hide()
         self.scrcpy.stop_all()
         super().closeEvent(event)

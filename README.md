@@ -1,41 +1,26 @@
 # PhoneDesk
 
-تجربة سطح مكتب للهاتف على Windows وLinux بالاعتماد على ADB وscrcpy.
+PhoneDesk يشغّل تجربة سطح مكتب لهواتف Android عبر ADB وscrcpy، مع مسار خاص لأجهزة Samsung التي توفر واجهة الشاشة الثانوية الخاصة بـ DeX.
 
-## الهدف
+## الاكتشاف الرئيسي
 
-PhoneDesk لا يكتفي بعرض شاشة الهاتف، بل يبني فوق scrcpy واجهة واحدة لإدارة:
+على Galaxy S25 Ultra / Android 16 / One UI 8.5 أثبت الاختبار أن إنشاء Virtual Display مناسب يجعل النظام نفسه يشغّل تلقائيًا:
 
-- الاتصال اللاسلكي عبر ADB.
-- عرض شاشة الهاتف مع الصوت والتحكم.
-- إنشاء Virtual Display قابل لتغيير الحجم.
-- تشغيل تطبيق Android في نافذة مستقلة على الكمبيوتر.
-- حفظ عنوان الهاتف والإعدادات محليًا.
+- Samsung `SecondaryLauncher`
+- `DexTaskbarWindow` الأصلي
+- Navigation Bar خاص بالشاشة الثانوية
+- خلفية ونظام HOME مستقلين عن شاشة الهاتف
 
-## خط الأساس الحالي
-
-المشروع مستهدف حاليًا لهاتف Galaxy S25 Ultra يعمل بـ Android 16 / One UI 8.5،
-مع scrcpy 4.1 واتصال ADB لاسلكي.
+لذلك المسار الأساسي في PhoneDesk لا يقلّد شريط DeX؛ بل يستخدم واجهة Samsung الأصلية المتاحة على الهاتف عندما يدعمها الجهاز.
 
 ## المتطلبات
 
-- Python 3.11 أو أحدث.
-- `adb` موجود في PATH.
-- `scrcpy` موجود في PATH.
-- الهاتف سبق ربطه لاسلكيًا مع ADB.
+- Python 3.10 أو أحدث.
+- `adb` في PATH.
+- `scrcpy` 4.1 أو إصدار متوافق في PATH.
+- ربط ADB لاسلكي أو سلكي مسبقًا.
 
-## التشغيل
-
-### Linux / Fedora
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-python run.py
-```
-
-### Windows
+## التشغيل على Windows
 
 ```powershell
 py -m venv .venv
@@ -44,19 +29,25 @@ pip install -r requirements.txt
 py run.py
 ```
 
-## الوظائف في MVP
+## التشغيل على Linux / Fedora
 
-1. فحص وجود ADB وscrcpy.
-2. الاتصال بعنوان الهاتف مثل `192.168.1.2:5555`.
-3. تشغيل العرض العادي للهاتف.
-4. تشغيل Desktop Virtual Display.
-5. جلب حزم تطبيقات المستخدم.
-6. تشغيل تطبيق محدد في نافذة Virtual Display مستقلة.
-7. إيقاف جلسات PhoneDesk المفتوحة.
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python run.py
+```
 
-## ملاحظات
+## Native Samsung DeX profile
 
-قد يكون الـ Virtual Display فارغًا على بعض الأجهزة إذا لم يوفّر النظام Launcher للعرض الثانوي.
-في هذه الحالة استخدم قسم "تشغيل تطبيق في نافذة" واختر حزمة تطبيق.
+المسار الذي تم التحقق منه يستخدم Virtual Display بدقة وكثافة `1600x900/160` مع mouse/keyboard SDK injection. على الجهاز المختبر أدى ذلك إلى إنشاء واجهة Samsung الثانوية وشريط DeX تلقائيًا دون Root.
 
-لا يحتاج المشروع Root.
+قسم التطبيقات داخل PhoneDesk أصبح خيارًا احتياطيًا، ويجلب كل التطبيقات التي لها `MAIN/LAUNCHER` بدل الاكتفاء بتطبيقات المستخدم.
+
+## التوثيق التقني
+
+راجع `docs/DEX_TECHNICAL_MAP.md` للحصول على المكونات التي تم اكتشافها والاختبارات والقيود.
+
+## الخطة
+
+نثبت أولًا نسخة Desktop: App Drawer، الماوس/لوحة المفاتيح، Multi-Window والنوافذ الحرة. بعد ذلك نبدأ نسخة ويب تعمل عبر رابط مع Agent محلي آمن يربط المتصفح بالهاتف.

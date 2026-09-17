@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-import ctypes
 import os
+import re
 import shutil
 import subprocess
-import time
 from typing import Iterable
 
 
@@ -76,24 +75,20 @@ class AndroidBridge:
     def android_version(self, serial: str) -> CommandResult:
         return run_command([self.adb, "-s", serial, "shell", "getprop", "ro.build.version.release"], timeout=8)
 
-    def list_user_packages(self, serial: str) -> CommandResult:
+    def list_launchable_packages(self, serial: str) -> CommandResult:
         result = run_command(
-            [self.adb, "-s", serial, "shell", "pm", "list", "packages", "-3"],
-            timeout=30,
-        )
+            [self.adb, "-s", serial, "shell", "cmd", "package", "query-activities",
+             "-a", "android.intent.action.MAIN", "-c", "android.intent.category.LAUNCHER"], timeout=45)
         if not result.ok:
             return result
-        packages = []
-        for line in result.output.splitlines():
-            line = line.strip()
-            if line.startswith("package:"):
-                packages.append(line.removeprefix("package:"))
-        packages.sort(key=str.lower)
-        return CommandResult(True, "\n".join(packages))
+        pattern = re.compile(r"^\s*([A-Za-z0-9_.$]+)/(?:[A-Za-z0-9_.$]+)\s*$")
+        packages = {m.group(1) for line in result.output.splitlines() if (m := pattern.match(line))}
+        return CommandResult(True, "\n".join(sorted(packages, key=str.lower)))
+
 
 
 class ScrcpyManager:
-    DESKTOP_TITLE = "PhoneDesk - Desktop"
+    DESKTOP_TITLE = "PhoneDesk - Samsung DeX"
 
     def __init__(self, scrcpy_path: str | None = None):
         self.scrcpy = scrcpy_path or find_tool("scrcpy") or "scrcpy"
@@ -138,14 +133,13 @@ class ScrcpyManager:
     def desktop(self, serial: str) -> CommandResult:
         args = [
             "-s", serial,
-            "--new-display=1920x1080",
+            "--new-display=1600x900/160",
             "--flex-display",
             "--keep-active",
             "--display-ime-policy=local",
             "--audio-source=output",
             "--mouse=sdk",
             "--keyboard=sdk",
-            "--mouse-bind=bhsn:++++",
             "--max-fps=60",
             "--disable-screensaver",
             "--fullscreen",
@@ -159,7 +153,7 @@ class ScrcpyManager:
             return CommandResult(False, "اسم الحزمة غير صالح.")
         args = [
             "-s", serial,
-            "--new-display=1280x900",
+            "--new-display=1280x800/160",
             "--flex-display",
             "--keep-active",
             "--display-ime-policy=local",
@@ -167,67 +161,6 @@ class ScrcpyManager:
             f"--window-title=PhoneDesk - {package}",
         ]
         return self._spawn(args)
-
-    def _desktop_hwnd_windows(self) -> int | None:
-        proc = self.desktop_process
-        if not proc or proc.poll() is not None:
-            return None
-
-        user32 = ctypes.windll.user32
-        found: list[int] = []
-        enum_proc_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
-
-        def callback(hwnd, _lparam):
-            pid = ctypes.c_ulong()
-            user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
-            if pid.value == proc.pid and user32.IsWindowVisible(hwnd):
-                if user32.GetWindowTextLengthW(hwnd) > 0:
-                    found.append(int(hwnd))
-                    return False
-            return True
-
-        callback_ref = enum_proc_type(callback)
-        user32.EnumWindows(callback_ref, 0)
-        return found[0] if found else None
-
-    def send_desktop_shortcut(self, action: str) -> CommandResult:
-        if os.name != "nt":
-            return CommandResult(False, "أزرار سطح المكتب العائمة مدعومة على Windows حاليًا.")
-
-        hwnd = self._desktop_hwnd_windows()
-        if not hwnd:
-            return CommandResult(False, "نافذة PhoneDesk Desktop غير موجودة.")
-
-        keymap = {
-            "home": 0x48,
-            "back": 0x42,
-            "recent": 0x53,
-            "notifications": 0x4E,
-            "volume_up": 0x26,
-            "volume_down": 0x28,
-        }
-        user32 = ctypes.windll.user32
-        user32.ShowWindow(hwnd, 9)
-        user32.SetForegroundWindow(hwnd)
-        time.sleep(0.06)
-
-        key_up = 0x0002
-        if action == "fullscreen":
-            vk = 0x7A  # F11
-            user32.keybd_event(vk, 0, 0, 0)
-            user32.keybd_event(vk, 0, key_up, 0)
-            return CommandResult(True, "تم تبديل وضع ملء الشاشة.")
-
-        vk = keymap.get(action)
-        if vk is None:
-            return CommandResult(False, f"أمر غير معروف: {action}")
-
-        vk_lalt = 0xA4
-        user32.keybd_event(vk_lalt, 0, 0, 0)
-        user32.keybd_event(vk, 0, 0, 0)
-        user32.keybd_event(vk, 0, key_up, 0)
-        user32.keybd_event(vk_lalt, 0, key_up, 0)
-        return CommandResult(True, "تم إرسال أمر التحكم إلى سطح المكتب.")
 
     def stop_all(self) -> int:
         stopped = 0
