@@ -1,0 +1,18 @@
+[project]
+name = "phonedesk"
+version = "0.1.0"
+description = "Desktop-style Android experience over wireless ADB and scrcpy"
+requires-python = ">=3.11"
+dependencies = [
+    "PySide6>=6.8,<7",
+]
+
+[project.scripts]
+phonedesk = "phonedesk.main:main"
+
+[build-system]
+requires = ["setuptools>=70"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
