@@ -189,7 +189,7 @@ class ScrcpyManager:
             args.append("--turn-screen-off")
         return self._spawn(args, "عرض الهاتف")
 
-    def desktop(self, serial: str) -> CommandResult:
+    def desktop(self, serial: str, turn_screen_off: bool = False) -> CommandResult:
         args = [
             "-s", serial,
             "--new-display=1600x900/160",
@@ -204,9 +204,12 @@ class ScrcpyManager:
             "--fullscreen",
             f"--window-title={self.DESKTOP_TITLE}",
         ]
+        if turn_screen_off:
+            # With a new display, scrcpy powers off the phone's main screen.
+            args.append("--turn-screen-off")
         return self._spawn(args, "Samsung DeX", role="desktop")
 
-    def launch_app(self, serial: str, package: str) -> CommandResult:
+    def launch_app(self, serial: str, package: str, turn_screen_off: bool = False) -> CommandResult:
         package = package.strip()
         if not package or " " in package:
             return CommandResult(False, "اسم الحزمة غير صالح.")
@@ -219,6 +222,8 @@ class ScrcpyManager:
             f"--start-app={package}",
             f"--window-title=PhoneDesk - {package}",
         ]
+        if turn_screen_off:
+            args.append("--turn-screen-off")
         return self._spawn(args, f"التطبيق {package}")
 
     def stop_all(self) -> int:

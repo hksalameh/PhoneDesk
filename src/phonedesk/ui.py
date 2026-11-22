@@ -248,7 +248,7 @@ class MainWindow(QMainWindow):
         self.append_log(result.output)
 
     def desktop(self):
-        result = self.scrcpy.desktop(self._serial())
+        result = self.scrcpy.desktop(self._serial(), self.screen_off.isChecked())
         self.append_log(result.output)
         if result.ok:
             self.append_log("عند نجاح التشغيل تظهر واجهة Samsung SecondaryLauncher وDexTaskbar تلقائيًا على الأجهزة المدعومة.")
@@ -268,7 +268,7 @@ class MainWindow(QMainWindow):
 
     def launch_app(self):
         package = self.package_combo.currentText().strip()
-        result = self.scrcpy.launch_app(self._serial(), package)
+        result = self.scrcpy.launch_app(self._serial(), package, self.screen_off.isChecked())
         self.append_log(result.output)
 
     def stop_sessions(self):
