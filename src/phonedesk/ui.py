@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtCore import QObject, QRunnable, QSettings, QThreadPool, Signal, Slot
+from PySide6.QtCore import QObject, QRunnable, QSettings, QThreadPool, QTimer, Signal, Slot
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -16,7 +16,14 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from .core import AndroidBridge, CommandResult, ScrcpyManager, find_tool
+from .core import (
+    MIN_VIRTUAL_DISPLAY_VERSION,
+    AndroidBridge,
+    CommandResult,
+    ScrcpyManager,
+    find_tool,
+    parse_scrcpy_version,
+)
 
 
 class WorkerSignals(QObject):
@@ -74,9 +81,15 @@ class MainWindow(QMainWindow):
         self.log = QTextEdit()
         self.log.setReadOnly(True)
 
+        # Report scrcpy sessions that stop on their own (errors, closed window).
+        self.session_timer = QTimer(self)
+        self.session_timer.setInterval(1000)
+        self.session_timer.timeout.connect(self._check_sessions)
+
         self._build_ui()
         self._bind()
         self._check_tools()
+        self.session_timer.start()
 
     def _build_ui(self):
         root = QWidget()
@@ -172,8 +185,34 @@ class MainWindow(QMainWindow):
             button.setEnabled(available)
         if available:
             self.refresh_state()
+            self._run_async(self.scrcpy.version, self._after_scrcpy_version)
         else:
             self._set_connected(False, "ثبّت ADB وscrcpy أولًا")
+
+    def _after_scrcpy_version(self, result: CommandResult):
+        version = parse_scrcpy_version(result.output)
+        if version is None:
+            self.append_log(f"تعذر تحديد إصدار scrcpy: {result.output or 'بدون رد'}")
+            return
+        self.append_log(f"إصدار scrcpy: {version[0]}.{version[1]}")
+        if version < MIN_VIRTUAL_DISPLAY_VERSION:
+            needed = ".".join(str(x) for x in MIN_VIRTUAL_DISPLAY_VERSION)
+            self.append_log(
+                f"تنبيه: Samsung DeX والنوافذ المستقلة تحتاج scrcpy {needed} أو أحدث. "
+                "حدّث scrcpy؛ عرض الهاتف العادي يبقى متاحًا."
+            )
+            self.desktop_btn.setEnabled(False)
+            self.launch_app_btn.setEnabled(False)
+
+    def _check_sessions(self):
+        for end in self.scrcpy.poll_finished():
+            if end.returncode == 0:
+                self.append_log(f"أُغلقت جلسة {end.label}.")
+            else:
+                self.append_log(
+                    f"فشلت جلسة {end.label} (رمز {end.returncode}):\n"
+                    f"{end.detail or 'لم يُرجع scrcpy تفاصيل.'}"
+                )
 
     def connect_device(self):
         serial = self._serial()
@@ -212,7 +251,7 @@ class MainWindow(QMainWindow):
         result = self.scrcpy.desktop(self._serial())
         self.append_log(result.output)
         if result.ok:
-            self.append_log("تم تشغيل الشاشة الثانوية؛ Samsung SecondaryLauncher وDexTaskbar يعملان تلقائيًا على الأجهزة المدعومة.")
+            self.append_log("عند نجاح التشغيل تظهر واجهة Samsung SecondaryLauncher وDexTaskbar تلقائيًا على الأجهزة المدعومة.")
 
     def load_apps(self):
         self.append_log("جلب كل التطبيقات القابلة للتشغيل ...")
@@ -237,6 +276,7 @@ class MainWindow(QMainWindow):
         self.append_log(f"تم إيقاف {count} جلسة.")
 
     def closeEvent(self, event):
+        self.session_timer.stop()
         self._save_settings()
         self.scrcpy.stop_all()
         super().closeEvent(event)
