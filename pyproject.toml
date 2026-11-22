@@ -1,6 +1,6 @@
 [project]
 name = "phonedesk"
-version = "0.1.0"
+version = "0.2.1"
 description = "Desktop-style Android experience over wireless ADB and scrcpy"
 requires-python = ">=3.11"
 dependencies = [
