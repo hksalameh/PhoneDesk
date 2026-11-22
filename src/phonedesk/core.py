@@ -198,7 +198,9 @@ class ScrcpyManager:
             "--display-ime-policy=local",
             "--audio-source=output",
             "--mouse=sdk",
-            "--keyboard=sdk",
+            # uhid = physical keyboard on the phone: Arabic and other layouts
+            # work (sdk mode is ASCII only). Layout: Alt+K once on the phone.
+            "--keyboard=uhid",
             "--max-fps=60",
             "--disable-screensaver",
             "--fullscreen",
@@ -220,6 +222,7 @@ class ScrcpyManager:
             "--keep-active",
             "--display-ime-policy=local",
             f"--start-app={package}",
+            "--keyboard=uhid",
             f"--window-title=PhoneDesk - {package}",
         ]
         if turn_screen_off:
